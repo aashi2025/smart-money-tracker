@@ -1,18 +1,56 @@
-from flask import Flask, render_template, jsonify, request
+import os
+import sys
 import datetime
 import logging
+from flask import Flask, render_template, jsonify, request, send_from_directory
+import jinja2
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+template_dirs = [
+    os.path.join(BASE_DIR, 'templates'),
+    os.path.join(BASE_DIR, 'api', 'templates'),
+    'templates'
+]
+static_dirs = [
+    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'api', 'static'),
+    'static'
+]
+
+app = Flask(
+    __name__,
+    template_folder=template_dirs[0],
+    static_folder=static_dirs[0]
+)
+
+# Multi-path Jinja loader so templates are found in serverless environment
+app.jinja_loader = jinja2.ChoiceLoader([
+    jinja2.FileSystemLoader(p) for p in template_dirs if os.path.exists(p)
+])
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Add current and parent dir to sys.path for robust serverless imports
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 from nse_fetcher import get_full_participant_analysis
 from volume_profile import get_volume_profile_analysis
 from option_analyzer import analyze_option_concentration
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 @app.route('/')
+@app.route('/index')
+@app.route('/api/index')
 def index():
     return render_template('index.html')
+
+@app.route('/static/<path:filename>')
+def custom_static(filename):
+    for s_dir in static_dirs:
+        if os.path.exists(os.path.join(s_dir, filename)):
+            return send_from_directory(s_dir, filename)
+    return send_from_directory(static_dirs[0], filename)
 
 @app.route('/api/fii-dii-oi', methods=['GET'])
 def api_fii_dii_oi():
